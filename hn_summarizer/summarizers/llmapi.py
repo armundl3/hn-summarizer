@@ -20,6 +20,7 @@ from ..config import (
     KEY_POINTS_COUNT,
     RELATED_LINKS_COUNT,
 )
+from ..logging_config import get_logger, log_performance
 
 
 class LLMAPISummarizer(BaseSummarizer):
@@ -33,34 +34,45 @@ class LLMAPISummarizer(BaseSummarizer):
         self.temperature = config.temperature or OPENAI_TEMPERATURE
         self.timeout = config.timeout or OPENAI_TIMEOUT
         self.fallback = BasicSummarizer(config)
+        self.logger = get_logger(self.__class__.__name__)
+        self.logger.info(f"Initialized LLMAPISummarizer with model: {self.model}, max_tokens: {self.max_tokens}")
     
     def summarize(self, content: ArticleContent) -> List[str]:
-        """Generate summary using LLM API with fallback to basic."""
+        """Generate summary using LLM API with optional fallback to basic."""
         if not content.content:
             return self._format_no_content_summary(content)
         
         try:
             return self._generate_api_summary(content)
         except Exception as e:
-            print(f"LLM API summarization failed: {e}")
-            print("Falling back to basic summarization...")
-            return self.fallback.summarize(content)
+            if self.config.allow_fallback:
+                print(f"LLM API summarization failed: {e}")
+                print("Falling back to basic summarization...")
+                return self.fallback.summarize(content)
+            else:
+                raise RuntimeError(f"LLM API summarization failed: {e}. Use --fallback to enable basic mode fallback.") from e
     
     def enhanced_summarize(self, content: ArticleContent, comments: List[HNComment], story_id: int) -> EnhancedSummary:
         """Generate enhanced summary with article content, comments, and related links."""
         try:
             return self._generate_enhanced_api_summary(content, comments, story_id)
         except Exception as e:
-            print(f"Enhanced LLM API summarization failed: {e}")
-            print("Falling back to basic enhanced summary...")
-            return self._generate_basic_enhanced_summary(content, comments, story_id)
+            if self.config.allow_fallback:
+                print(f"Enhanced LLM API summarization failed: {e}")
+                print("Falling back to basic enhanced summary...")
+                return self._generate_basic_enhanced_summary(content, comments, story_id)
+            else:
+                raise RuntimeError(f"Enhanced LLM API summarization failed: {e}. Use --fallback to enable basic mode fallback.") from e
     
     def _generate_api_summary(self, content: ArticleContent) -> List[str]:
         """Generate summary using OpenAI API."""
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            print("OPENAI_API_KEY not found, falling back to basic mode")
-            return self.fallback.summarize(content)
+            if self.config.allow_fallback:
+                print("OPENAI_API_KEY not found, falling back to basic mode")
+                return self.fallback.summarize(content)
+            else:
+                raise RuntimeError("OPENAI_API_KEY environment variable not set. Use --fallback to enable basic mode fallback.")
         
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -91,8 +103,11 @@ class LLMAPISummarizer(BaseSummarizer):
             lines = self._parse_summary_response(summary_text)
             return self._ensure_line_count(lines, content)
         
-        # If no valid response, use fallback
-        return self.fallback.summarize(content)
+        # If no valid response, handle based on fallback setting
+        if self.config.allow_fallback:
+            return self.fallback.summarize(content)
+        else:
+            raise RuntimeError("LLM API returned empty response. Use --fallback to enable basic mode fallback.")
     
     def _create_prompt(self, title: str, content: str) -> str:
         """Create prompt for API summarization."""
@@ -110,24 +125,34 @@ Please provide exactly 3 concise lines that capture the key points."""
         
         # Ensure we have valid lines
         if len(lines) >= 3:
+            self.logger.debug(f"Successfully parsed {len(lines)} lines from LLM API response")
             return lines[:3]
         elif len(lines) > 0:
+            self.logger.warning(f"LLM API response only had {len(lines)} lines, padding with default content")
             # Extend with placeholder content if needed
+            original_count = len(lines)
             while len(lines) < 3:
                 if len(lines) == 1:
                     lines.append("Additional context available in source article.")
+                    self.logger.debug("Added default line: 'Additional context available in source article.'")
                 else:
                     lines.append("Full details available at source URL.")
+                    self.logger.debug("Added default line: 'Full details available at source URL.'")
+            self.logger.info(f"Padded LLM API summary from {original_count} to {len(lines)} lines with defaults")
             return lines[:3]
         
+        self.logger.error("LLM API response contained no valid lines after parsing")
         return []
     
     def _generate_enhanced_api_summary(self, content: ArticleContent, comments: List[HNComment], story_id: int) -> EnhancedSummary:
         """Generate enhanced summary using OpenAI API."""
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            print("OPENAI_API_KEY not found, falling back to basic mode")
-            return self._generate_basic_enhanced_summary(content, comments, story_id)
+            if self.config.allow_fallback:
+                print("OPENAI_API_KEY not found, falling back to basic mode")
+                return self._generate_basic_enhanced_summary(content, comments, story_id)
+            else:
+                raise RuntimeError("OPENAI_API_KEY environment variable not set. Use --fallback to enable basic mode fallback.")
         
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -168,8 +193,11 @@ Please provide exactly 3 concise lines that capture the key points."""
         if summary_text:
             return self._parse_enhanced_summary_response(summary_text, content, story_id)
         
-        # If no valid response, use fallback
-        return self._generate_basic_enhanced_summary(content, comments, story_id)
+        # If no valid response, handle based on fallback setting
+        if self.config.allow_fallback:
+            return self._generate_basic_enhanced_summary(content, comments, story_id)
+        else:
+            raise RuntimeError("LLM API returned empty enhanced response. Use --fallback to enable basic mode fallback.")
     
     def _create_enhanced_prompt(self, title: str, content: str, comments: str) -> str:
         """Create enhanced prompt for comprehensive summarization."""
@@ -206,21 +234,34 @@ Provide concrete, specific insights rather than generic summaries."""
         """Parse the enhanced summary response from API."""
         import re
         
+        self.logger.debug(f"Parsing enhanced summary response from LLM API ({len(response_text)} chars)")
+        
         # Initialize default values
         article_summary = "Article summary not available."
         comment_summary = "Comment summary not available."
         key_points = ["Key insights not available."] * KEY_POINTS_COUNT
         related_links = ["Related topic research suggested."] * RELATED_LINKS_COUNT
         
+        # Track what we're using defaults for
+        using_defaults = []
+        
         # Parse article summary
         article_match = re.search(r'ARTICLE_SUMMARY:\s*\n(.*?)(?=\n[A-Z_]+:|$)', response_text, re.DOTALL)
         if article_match:
             article_summary = article_match.group(1).strip()
+            self.logger.debug("Successfully parsed article summary from LLM API response")
+        else:
+            using_defaults.append("article_summary")
+            self.logger.warning("Failed to parse ARTICLE_SUMMARY from LLM API response, using default")
         
         # Parse comment summary
         comment_match = re.search(r'COMMENT_SUMMARY:\s*\n(.*?)(?=\n[A-Z_]+:|$)', response_text, re.DOTALL)
         if comment_match:
             comment_summary = comment_match.group(1).strip()
+            self.logger.debug("Successfully parsed comment summary from LLM API response")
+        else:
+            using_defaults.append("comment_summary")
+            self.logger.warning("Failed to parse COMMENT_SUMMARY from LLM API response, using default")
         
         # Parse key points
         key_points_match = re.search(r'KEY_POINTS:\s*\n(.*?)(?=\n[A-Z_]+:|$)', response_text, re.DOTALL)
@@ -229,9 +270,19 @@ Provide concrete, specific insights rather than generic summaries."""
             points = re.findall(r'\d+\.\s*(.*?)(?=\n\d+\.|\n[A-Z_]+:|$)', points_text, re.DOTALL)
             if points:
                 key_points = [point.strip() for point in points[:KEY_POINTS_COUNT]]
+                self.logger.debug(f"Successfully parsed {len(points)} key points from LLM API response")
                 # Pad if fewer points found
+                original_count = len(key_points)
                 while len(key_points) < KEY_POINTS_COUNT:
                     key_points.append("Additional insights available in full discussion.")
+                if len(key_points) > original_count:
+                    self.logger.info(f"Padded key points from {original_count} to {KEY_POINTS_COUNT} with defaults")
+            else:
+                using_defaults.append("key_points")
+                self.logger.warning("Found KEY_POINTS section but failed to parse numbered items, using defaults")
+        else:
+            using_defaults.append("key_points")
+            self.logger.warning("Failed to parse KEY_POINTS from LLM API response, using defaults")
         
         # Parse related links
         links_match = re.search(r'RELATED_LINKS:\s*\n(.*?)(?=\n[A-Z_]+:|$)', response_text, re.DOTALL)
@@ -240,9 +291,26 @@ Provide concrete, specific insights rather than generic summaries."""
             links = re.findall(r'\d+\.\s*(.*?)(?=\n\d+\.|\n[A-Z_]+:|$)', links_text, re.DOTALL)
             if links:
                 related_links = [link.strip() for link in links[:RELATED_LINKS_COUNT]]
+                self.logger.debug(f"Successfully parsed {len(links)} related links from LLM API response")
                 # Pad if fewer links found
+                original_count = len(related_links)
                 while len(related_links) < RELATED_LINKS_COUNT:
                     related_links.append("Explore related topics in the field.")
+                if len(related_links) > original_count:
+                    self.logger.info(f"Padded related links from {original_count} to {RELATED_LINKS_COUNT} with defaults")
+            else:
+                using_defaults.append("related_links")
+                self.logger.warning("Found RELATED_LINKS section but failed to parse numbered items, using defaults")
+        else:
+            using_defaults.append("related_links")
+            self.logger.warning("Failed to parse RELATED_LINKS from LLM API response, using defaults")
+        
+        # Log summary of what defaults were used
+        if using_defaults:
+            self.logger.warning(f"Enhanced summary using defaults for: {', '.join(using_defaults)}")
+            self.logger.debug(f"LLM API response that failed parsing: {response_text[:500]}...")
+        else:
+            self.logger.info("Successfully parsed all enhanced summary components from LLM API response")
         
         return EnhancedSummary(
             article_summary=article_summary,
@@ -255,9 +323,12 @@ Provide concrete, specific insights rather than generic summaries."""
     
     def _generate_basic_enhanced_summary(self, content: ArticleContent, comments: List[HNComment], story_id: int) -> EnhancedSummary:
         """Generate basic fallback enhanced summary."""
+        self.logger.info("Generating basic enhanced summary fallback (all components will be generic)")
+        
         # Create basic article summary using the existing method
         basic_summary = self.fallback.summarize(content)
         article_summary = " ".join(basic_summary[:2]) if len(basic_summary) >= 2 else "Article content summarized."
+        self.logger.debug(f"Using basic article summary from {len(basic_summary)} fallback lines")
         
         # Create basic comment summary
         if comments:
@@ -265,8 +336,10 @@ Provide concrete, specific insights rather than generic summaries."""
             top_commenters = list(set([c.by for c in comments[:5] if c.by]))[:3]
             commenter_text = ", ".join(top_commenters) if top_commenters else "community members"
             comment_summary = f"Discussion with {comment_count} comments from {commenter_text} covering various perspectives on the topic."
+            self.logger.debug(f"Generated generic comment summary for {comment_count} comments")
         else:
             comment_summary = "Limited discussion available for this article."
+            self.logger.debug("Using default comment summary (no comments available)")
         
         # Generate basic key points
         key_points = [
@@ -274,13 +347,16 @@ Provide concrete, specific insights rather than generic summaries."""
             "Community discussion provides additional insights and perspectives",
             "Topic represents current trends and developments in the field"
         ]
+        self.logger.warning("Using 3 generic default key points (no AI-generated insights)")
         
         # Generate basic related links  
+        topic_words = content.title.split()[0:3] if content.title else ["this topic"]
         related_links = [
-            f"Search for more information about {content.title.split()[0:3] if content.title else ['this topic']}",
+            f"Search for more information about {' '.join(topic_words)}",
             "Explore related discussions on Hacker News",
             "Research current developments in this technology area"
         ]
+        self.logger.warning("Using 3 generic default related links (no AI-generated suggestions)")
         
         return EnhancedSummary(
             article_summary=article_summary,

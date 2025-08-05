@@ -358,3 +358,73 @@ RELATED_LINKS:
         assert "12345" in result.hn_discussion_url
         assert len(result.key_points) == 3
         assert len(result.related_links) == 3
+
+
+class TestOllamaNoFallbackBehavior:
+    """Test Ollama summarizer with fallback disabled."""
+    
+    def setup_method(self):
+        config = SummarizerConfig(mode=SummarizerMode.OLLAMA, allow_fallback=False)
+        self.summarizer = OllamaSummarizer(config)
+    
+    @patch("hn_summarizer.summarizers.ollama.requests.post")
+    def test_summarize_failure_raises_error(self, mock_post):
+        mock_post.side_effect = Exception("Connection refused")
+        
+        content = ArticleContent(
+            title="Test Article",
+            content="Test content here",
+            url="https://example.com"
+        )
+        
+        try:
+            self.summarizer.summarize(content)
+            assert False, "Expected RuntimeError to be raised"
+        except RuntimeError as e:
+            assert "Ollama summarization failed" in str(e)
+            assert "Use --fallback to enable" in str(e)
+
+
+class TestLLMAPINoFallbackBehavior:
+    """Test LLM API summarizer with fallback disabled."""
+    
+    def setup_method(self):
+        config = SummarizerConfig(mode=SummarizerMode.LLMAPI, allow_fallback=False)
+        self.summarizer = LLMAPISummarizer(config)
+    
+    @patch("os.getenv")
+    def test_summarize_no_api_key_raises_error(self, mock_getenv):
+        mock_getenv.return_value = None
+        
+        content = ArticleContent(
+            title="Test Article", 
+            content="Test content here",
+            url="https://example.com"
+        )
+        
+        try:
+            self.summarizer.summarize(content)
+            assert False, "Expected RuntimeError to be raised"
+        except RuntimeError as e:
+            assert "OPENAI_API_KEY environment variable not set" in str(e)
+            assert "Use --fallback to enable" in str(e)
+    
+    @patch("os.getenv")
+    @patch("hn_summarizer.summarizers.llmapi.requests.post")
+    def test_summarize_api_failure_raises_error(self, mock_post, mock_getenv):
+        mock_getenv.return_value = "test-api-key"
+        mock_post.side_effect = Exception("API error")
+        
+        content = ArticleContent(
+            title="Test Article",
+            content="Test content here", 
+            url="https://example.com"
+        )
+        
+        try:
+            self.summarizer.summarize(content)
+            assert False, "Expected RuntimeError to be raised"
+        except RuntimeError as e:
+            assert "LLM API summarization failed" in str(e)
+            assert "Use --fallback to enable" in str(e)
+

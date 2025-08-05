@@ -83,11 +83,12 @@ hn-summarizer -m basic
 Uses a local LLM via [Ollama](https://ollama.ai/) for more intelligent summarization.
 
 **Prerequisites:**
-1. Install Ollama: https://ollama.ai/
+1. Install [Ollama](https://ollama.ai)
 2. Pull the required model:
    ```bash
-   ollama pull llama3.2
+   ollama run qwen3:8b
    ```
+   * configure the [OLLAMA_DEFAULT_MODEL](https://github.com/armundl3/hn-summarizer/blob/432c599af03f29611d50fa2704e3bc3cb8d4adab/hn_summarizer/config.py#L35)
 3. Ensure Ollama is running (default: `localhost:11434`)
 
 **Usage:**

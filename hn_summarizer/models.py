@@ -75,7 +75,9 @@ class ArticleSummary:
 class SummarizerConfig:
     """Configuration for a summarizer."""
     mode: SummarizerMode
-    timeout: int = 30
+    timeout: int = 60
     max_tokens: Optional[int] = None
     temperature: Optional[float] = None
     model_name: Optional[str] = None
+    ollama_model: Optional[str] = None
+    allow_fallback: bool = True

@@ -28,9 +28,9 @@ class TestCLI:
         result = self.runner.invoke(main)
 
         assert result.exit_code == 0
-        mock_summarizer_class.assert_called_once_with(mode="basic")
-        mock_summarizer.summarize_articles.assert_called_once_with(20)
-        assert "Fetching top 20 Hacker News articles..." in result.output
+        mock_summarizer_class.assert_called_once_with(mode="basic", ollama_model=None, allow_fallback=False)
+        mock_summarizer.summarize_articles.assert_called_once_with(5)
+        assert "Fetching top 5 Hacker News articles..." in result.output
         assert "--- Article 1 (Score: 100) ---" in result.output
         assert "Line 1" in result.output
         assert "Line 2" in result.output
@@ -213,7 +213,7 @@ class TestCLI:
         result = self.runner.invoke(main, ["--mode", "ollama"])
 
         assert result.exit_code == 0
-        mock_summarizer_class.assert_called_once_with(mode="ollama")
+        mock_summarizer_class.assert_called_once_with(mode="ollama", ollama_model=None, allow_fallback=False)
 
     @patch("hn_summarizer.cli.HackerNewsSummarizer")
     def test_main_with_mode_short_option(self, mock_summarizer_class):
@@ -224,7 +224,39 @@ class TestCLI:
         result = self.runner.invoke(main, ["-m", "llmapi"])
 
         assert result.exit_code == 0
-        mock_summarizer_class.assert_called_once_with(mode="llmapi")
+        mock_summarizer_class.assert_called_once_with(mode="llmapi", ollama_model=None, allow_fallback=False)
+
+    @patch("hn_summarizer.cli.HackerNewsSummarizer")
+    def test_main_with_ollama_model_option(self, mock_summarizer_class):
+        mock_summarizer = Mock()
+        mock_summarizer_class.return_value = mock_summarizer
+        mock_summarizer.summarize_articles.return_value = []
+
+        result = self.runner.invoke(main, ["--mode", "ollama", "--ollama-model", "llama3.2:7b"])
+
+        assert result.exit_code == 0
+        mock_summarizer_class.assert_called_once_with(mode="ollama", ollama_model="llama3.2:7b", allow_fallback=False)
+
+    @patch("hn_summarizer.cli.HackerNewsSummarizer")
+    def test_main_with_fallback_option(self, mock_summarizer_class):
+        mock_summarizer = Mock()
+        mock_summarizer_class.return_value = mock_summarizer
+        mock_summarizer.summarize_articles.return_value = []
+
+        result = self.runner.invoke(main, ["--mode", "ollama", "--fallback"])
+
+        assert result.exit_code == 0
+        mock_summarizer_class.assert_called_once_with(mode="ollama", ollama_model=None, allow_fallback=True)
+
+    @patch("hn_summarizer.cli.HackerNewsSummarizer")
+    def test_main_error_handling_without_fallback(self, mock_summarizer_class):
+        mock_summarizer_class.side_effect = RuntimeError("Ollama connection failed")
+
+        result = self.runner.invoke(main, ["--mode", "ollama"])
+
+        assert result.exit_code == 1  # click.Abort() returns exit code 1
+        assert "Error: Ollama connection failed" in result.output
+        assert "Hint: You can use --fallback" in result.output
 
     def test_help_option(self):
         result = self.runner.invoke(main, ["--help"])
@@ -234,3 +266,5 @@ class TestCLI:
         assert "--count" in result.output
         assert "--output" in result.output
         assert "--mode" in result.output
+        assert "--ollama-model" in result.output
+        assert "--fallback" in result.output

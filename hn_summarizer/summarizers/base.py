@@ -7,6 +7,7 @@ from typing import List
 
 from ..models import ArticleContent, SummarizerConfig
 from ..config import SUMMARY_LINES
+from ..logging_config import get_logger
 
 
 class BaseSummarizer(ABC):
@@ -14,6 +15,7 @@ class BaseSummarizer(ABC):
     
     def __init__(self, config: SummarizerConfig):
         self.config = config
+        self.logger = get_logger(self.__class__.__name__)
     
     @abstractmethod
     def summarize(self, content: ArticleContent) -> List[str]:
@@ -41,19 +43,31 @@ class BaseSummarizer(ABC):
         """
         # Remove empty lines
         lines = [line.strip() for line in lines if line.strip()]
+        original_count = len(lines)
         
         # Truncate if too many lines
         if len(lines) > SUMMARY_LINES:
+            self.logger.debug(f"Truncating summary from {len(lines)} to {SUMMARY_LINES} lines")
             return lines[:SUMMARY_LINES]
         
         # Pad if too few lines
+        defaults_added = []
         while len(lines) < SUMMARY_LINES:
             if len(lines) == 0:
-                lines.append(f"Article: {content.title}")
+                line = f"Article: {content.title}"
+                lines.append(line)
+                defaults_added.append(f"title fallback: '{line}'")
             elif len(lines) == 1:
-                lines.append("Content not available for detailed summarization.")
+                line = "Content not available for detailed summarization."
+                lines.append(line)
+                defaults_added.append(f"content fallback: '{line}'")
             else:
-                lines.append(f"URL: {content.url}")
+                line = f"URL: {content.url}"
+                lines.append(line)
+                defaults_added.append(f"URL fallback: '{line}'")
+        
+        if defaults_added:
+            self.logger.warning(f"Padded summary from {original_count} to {SUMMARY_LINES} lines with defaults: {'; '.join(defaults_added)}")
         
         return lines[:SUMMARY_LINES]
     
@@ -67,12 +81,17 @@ class BaseSummarizer(ABC):
         Returns:
             List of fallback summary lines
         """
+        self.logger.warning(f"Using no-content fallback summary for '{content.title}' (reason: {content.error_message or 'empty content'})")
+        
         url_display = content.url
         if len(url_display) > 80:
             url_display = url_display[:80] + "..."
         
-        return [
+        fallback_lines = [
             f"Title: {content.title}",
             "Content not available for summarization.",
             f"URL: {url_display}" if url_display else "No URL available"
         ]
+        
+        self.logger.debug(f"Generated no-content fallback: {fallback_lines}")
+        return fallback_lines
