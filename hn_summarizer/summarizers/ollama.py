@@ -74,7 +74,7 @@ class OllamaSummarizer(BaseSummarizer):
             "stream": False,
             "options": {
                 "temperature": self.config.temperature or 0.7,
-                "max_tokens": self.config.max_tokens or 200
+                "num_predict": self.config.max_tokens or 200
             }
         }
         
@@ -95,9 +95,11 @@ class OllamaSummarizer(BaseSummarizer):
         # If no valid response, handle based on fallback setting
         if self.config.allow_fallback:
             self.logger.warning("Ollama returned empty response, falling back to basic summarizer")
+            self.logger.debug(f"Empty Ollama response: '{summary_text}'")
             return self.fallback.summarize(content)
         else:
             self.logger.error("Ollama returned empty response and fallback is disabled")
+            self.logger.debug(f"Empty Ollama response: '{summary_text}'")
             raise RuntimeError("Ollama returned empty response. Use --fallback to enable basic mode fallback.")
     
     def _create_prompt(self, title: str, content: str) -> str:
@@ -133,6 +135,7 @@ Provide a concise 3-line summary:"""
             return lines[:3]
         
         self.logger.error("Ollama response contained no valid lines after parsing")
+        self.logger.debug(f"Raw Ollama response that failed parsing: {response_text[:500]}...")
         return []
     
     def _generate_enhanced_ollama_summary(self, content: ArticleContent, comments: List[HNComment], story_id: int) -> EnhancedSummary:
@@ -158,7 +161,7 @@ Provide a concise 3-line summary:"""
             "stream": False,
             "options": {
                 "temperature": self.config.temperature or 0.7,
-                "max_tokens": ENHANCED_SUMMARY_TOKENS
+                "num_predict": ENHANCED_SUMMARY_TOKENS
             }
         }
         
@@ -173,8 +176,12 @@ Provide a concise 3-line summary:"""
         
         # If no valid response, handle based on fallback setting
         if self.config.allow_fallback:
+            self.logger.warning("Ollama returned empty enhanced response, falling back to basic enhanced summary")
+            self.logger.debug(f"Empty Ollama enhanced response: '{summary_text}'")
             return self._generate_basic_enhanced_summary(content, comments, story_id)
         else:
+            self.logger.error("Ollama returned empty enhanced response and fallback is disabled")
+            self.logger.debug(f"Empty Ollama enhanced response: '{summary_text}'")
             raise RuntimeError("Ollama returned empty enhanced response. Use --fallback to enable basic mode fallback.")
     
     def _create_enhanced_prompt(self, title: str, content: str, comments: str) -> str:
