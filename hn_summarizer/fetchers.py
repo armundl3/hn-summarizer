@@ -16,7 +16,7 @@ from .config import (
     MAX_CONTENT_LENGTH,
     CONTENT_SELECTORS,
 )
-from .models import HNStory, ArticleContent
+from .models import HNStory, ArticleContent, HNComment
 
 
 class HackerNewsAPI:
@@ -62,6 +62,88 @@ class HackerNewsAPI:
             )
         except requests.RequestException as e:
             print(f"Error fetching story {story_id}: {e}")
+            return None
+    
+    def get_comment(self, comment_id: int) -> Optional[HNComment]:
+        """Fetch details for a specific comment."""
+        try:
+            url = f"{self.base_url}{HN_ITEM_ENDPOINT.format(comment_id)}"
+            response = self.session.get(url, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
+            
+            data = response.json()
+            if not data or data.get("type") != "comment":
+                return None
+                
+            return HNComment(
+                id=data.get("id", comment_id),
+                text=data.get("text", ""),
+                by=data.get("by"),
+                time=data.get("time"),
+                parent=data.get("parent"),
+                kids=data.get("kids", [])
+            )
+        except requests.RequestException as e:
+            print(f"Error fetching comment {comment_id}: {e}")
+            return None
+    
+    def get_top_comments(self, story: HNStory, max_comments: int = 20) -> List[HNComment]:
+        """Fetch top-level comments for a story."""
+        comments = []
+        
+        if not story.descendants or not hasattr(story, 'kids'):
+            # Need to fetch story details to get comment IDs
+            story_details = self.get_story_details(story.id)
+            if not story_details or 'kids' not in story_details.__dict__:
+                return comments
+            comment_ids = getattr(story_details, 'kids', [])
+        else:
+            comment_ids = getattr(story, 'kids', [])
+        
+        # Fetch comments up to max_comments limit
+        for comment_id in comment_ids[:max_comments]:
+            comment = self.get_comment(comment_id)
+            if comment and comment.text.strip():  # Only include non-empty comments
+                comments.append(comment)
+                
+        return comments
+    
+    def get_story_with_comments(self, story_id: int, max_comments: int = 20) -> Optional[tuple]:
+        """Fetch story with its top comments."""
+        try:
+            # Get story details first
+            url = f"{self.base_url}{HN_ITEM_ENDPOINT.format(story_id)}"
+            response = self.session.get(url, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
+            
+            data = response.json()
+            if not data:
+                return None
+                
+            story = HNStory(
+                id=data.get("id", story_id),
+                title=data.get("title", "No title"),
+                url=data.get("url"),
+                score=data.get("score", 0),
+                by=data.get("by"),
+                time=data.get("time"),
+                descendants=data.get("descendants"),
+                type=data.get("type", "story")
+            )
+            
+            # Fetch comments
+            comments = []
+            comment_ids = data.get("kids", [])
+            
+            for comment_id in comment_ids[:max_comments]:
+                comment = self.get_comment(comment_id)
+                if comment and comment.text.strip():
+                    comments.append(comment)
+            
+            return story, comments
+            
+        except requests.RequestException as e:
+            print(f"Error fetching story with comments {story_id}: {e}")
             return None
 
 

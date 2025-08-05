@@ -6,9 +6,10 @@ import time
 from typing import List, Dict
 
 from .config import RATE_LIMIT_DELAY
-from .models import SummarizerMode, SummarizerConfig, ArticleSummary
+from .models import SummarizerMode, SummarizerConfig, ArticleSummary, EnhancedSummary
 from .fetchers import HackerNewsAPI, ContentExtractor
 from .summarizers import BasicSummarizer, OllamaSummarizer, LLMAPISummarizer
+from .config import MAX_COMMENTS_TO_FETCH
 
 
 class HackerNewsSummarizer:
@@ -61,28 +62,58 @@ class HackerNewsSummarizer:
         for i, story_id in enumerate(story_ids, 1):
             print(f"Processing story {i}/{limit}: {story_id}")
 
-            # Get story details
-            story = self.get_story_details(story_id)
-            if not story:
-                continue
-
-            # Extract article content
-            content = self.extract_article_content(story)
-
-            # Generate summary
-            summary_lines = self.generate_summary(content)
-
-            results.append(
-                {
+            # For enhanced modes (ollama/llmapi), get story with comments
+            if self.mode in [SummarizerMode.OLLAMA, SummarizerMode.LLMAPI]:
+                story_with_comments = self.api_client.get_story_with_comments(
+                    story_id, MAX_COMMENTS_TO_FETCH
+                )
+                if not story_with_comments:
+                    continue
+                
+                story, comments = story_with_comments
+                content = self.extract_article_content(story)
+                
+                # Generate enhanced summary
+                if hasattr(self.summarizer, 'enhanced_summarize'):
+                    enhanced_summary = self.summarizer.enhanced_summarize(content, comments, story_id)
+                    summary_lines = self._format_enhanced_summary_for_output(enhanced_summary)
+                else:
+                    summary_lines = self.generate_summary(content)
+                
+                results.append({
                     "id": story.id,
                     "title": story.title,
                     "url": story.url or "",
                     "score": story.score,
                     "summary": summary_lines,
-                }
-            )
+                    "enhanced": enhanced_summary if hasattr(self.summarizer, 'enhanced_summarize') else None
+                })
+            else:
+                # Basic mode - use original logic
+                story = self.get_story_details(story_id)
+                if not story:
+                    continue
+
+                content = self.extract_article_content(story)
+                summary_lines = self.generate_summary(content)
+
+                results.append({
+                    "id": story.id,
+                    "title": story.title,
+                    "url": story.url or "",
+                    "score": story.score,
+                    "summary": summary_lines,
+                })
 
             # Add delay to be respectful to servers
             time.sleep(RATE_LIMIT_DELAY)
 
         return results
+    
+    def _format_enhanced_summary_for_output(self, enhanced_summary: EnhancedSummary) -> List[str]:
+        """Format enhanced summary for CLI output compatibility."""
+        return [
+            f"Article: {enhanced_summary.article_summary}",
+            f"Discussion: {enhanced_summary.comment_summary}",
+            f"Key Points: {' | '.join(enhanced_summary.key_points[:2])}"
+        ]

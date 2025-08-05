@@ -1,0 +1,19 @@
+============================================================
+
+--- Article 1 (Score: 772) ---
+A user spent six years constructing an inefficient yet intriguing wooden pixel display named Kilopixel, featuring 1000 pixels that can be controlled via a web interface. The project involved creating software, physical controllers, custom CNC builds, and extensive fabrication work using wood and aluminum materials. The display is now available for global interaction at kilopx.com.
+Additional details available in full article.
+See source for more information.
+
+--- Article 2 (Score: 139) ---
+The article introduces Carbon, an open-source ERP system designed for manufacturing companies, built over 3 years to address issues with modern tooling, vendor lock-in, and the uniqueness of each company. Key features include ERP, MES, QMS, custom fields, nested BoM traceability, MRP configurator, client/server API, webhooks, accounting, capacity planning, simulation, unified auth and permissions, full-stack type safety, realtime database subscriptions, and third-party integrations. Carbon's techstack includes Remix, TypeScript, Tailwind, Radix UI, Supabase, Upstash, Trigger, Resend, Novu, Vercel, Stripe, and follows the Turborepo convention for organization.
+Additional details available in full article.
+See source for more information.
+
+--- Article 3 (Score: 334) ---
+Qwen-Image, a 20B MMDiT model, excels in complex text rendering across languages and preserves semantic meaning and visual realism during image editing. It outperforms existing models on various benchmarks, particularly in Chinese text generation. Notably, it can render Chinese text in diverse scenarios with high fidelity.
+Additional details available in full article.
+See source for more information.
+
+============================================================
+Summary generation complete!

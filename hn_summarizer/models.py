@@ -38,12 +38,35 @@ class ArticleContent:
 
 
 @dataclass
+class HNComment:
+    """Represents a Hacker News comment."""
+    id: int
+    text: str
+    by: Optional[str] = None
+    time: Optional[int] = None
+    parent: Optional[int] = None
+    kids: Optional[List[int]] = None
+
+
+@dataclass
+class EnhancedSummary:
+    """Enhanced summary with article content, comments, and related links."""
+    article_summary: str
+    comment_summary: str
+    key_points: List[str]
+    related_links: List[str]
+    original_url: str
+    hn_discussion_url: str
+
+
+@dataclass
 class ArticleSummary:
     """Represents a summarized article."""
     story: HNStory
     content: ArticleContent
     summary_lines: List[str]
     mode_used: SummarizerMode
+    enhanced_summary: Optional[EnhancedSummary] = None
     processing_time: Optional[float] = None
     fallback_used: bool = False
 
