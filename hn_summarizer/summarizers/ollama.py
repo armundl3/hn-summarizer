@@ -86,6 +86,7 @@ class OllamaSummarizer(BaseSummarizer):
         summary_text = result.get("response", "").strip()
         
         self.logger.debug(f"Received response from Ollama (length: {len(summary_text)} chars)")
+        self.logger.debug(f"Raw Ollama response: {summary_text[:1000]}{'...' if len(summary_text) > 1000 else ''}")
         
         if summary_text:
             lines = self._parse_summary_response(summary_text)
@@ -170,6 +171,9 @@ Provide a concise 3-line summary:"""
         
         result = response.json()
         summary_text = result.get("response", "").strip()
+        
+        self.logger.debug(f"Received enhanced response from Ollama (length: {len(summary_text)} chars)")
+        self.logger.debug(f"Raw Ollama enhanced response: {summary_text[:1000]}{'...' if len(summary_text) > 1000 else ''}")
         
         if summary_text:
             return self._parse_enhanced_summary_response(summary_text, content, story_id)
