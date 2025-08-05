@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "hn_summarizer"}]
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = ">=3.10,<3.12"
 requests = "^2.31.0"
 beautifulsoup4 = "^4.12.0"
 lxml = "^4.9.0"
