@@ -25,7 +25,7 @@ MAX_LINE_LENGTH = 120
 # Ollama settings
 OLLAMA_BASE_URL = "http://localhost:11434"
 OLLAMA_GENERATE_ENDPOINT = "/api/generate"
-OLLAMA_DEFAULT_MODEL = "llama3.2"
+OLLAMA_DEFAULT_MODEL = "mistral:7b"
 OLLAMA_TIMEOUT = 30
 
 # OpenAI API settings
